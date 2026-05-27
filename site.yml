@@ -65,12 +65,6 @@
   roles:
     - monitoring
 
-# Namespace: logging (Loki, Promtail)
-- name: Loki logging stack installeren (namespace logging)
-  hosts: master
-  become: true
-  roles:
-    - logging
 
 # Namespace: argocd
 - name: ArgoCD GitOps installeren (namespace argocd)
@@ -78,3 +72,10 @@
   become: true
   roles:
     - argocd
+
+# Namespace: logging (Loki, Promtail)
+- name: Loki logging stack installeren (namespace logging)
+  hosts: master
+  become: true
+  roles:
+    - logging

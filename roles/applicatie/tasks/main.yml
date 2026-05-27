@@ -104,13 +104,13 @@
                     memory: "512Mi"
                 livenessProbe:
                   httpGet:
-                    path: /web
+                    path: /
                     port: 80
                   initialDelaySeconds: 10
                   periodSeconds: 15
                 readinessProbe:
                   httpGet:
-                    path: /web
+                    path: /
                     port: 80
                   initialDelaySeconds: 5
                   periodSeconds: 10
@@ -194,13 +194,13 @@
                     memory: "1Gi"
                 livenessProbe:
                   httpGet:
-                    path: /stream
+                    path: /
                     port: 80
                   initialDelaySeconds: 10
                   periodSeconds: 15
                 readinessProbe:
                   httpGet:
-                    path: /stream
+                    path: /
                     port: 80
                   initialDelaySeconds: 5
                   periodSeconds: 10
