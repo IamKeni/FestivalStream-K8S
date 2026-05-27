@@ -1,0 +1,108 @@
+---
+# Namespace: monitoring
+# Diagram: Prometheus (metrics verzameling), Grafana (dashboards NodePort:32000),
+#          Alertmanager (custom alert regels)
+#          NFS mount: /mnt/pool/monitoring-data (PVC: monitoring-storage)
+#
+# Namespace: kube-system (metrics-server)
+# Diagram: Metrics Server – gebruikt door HPA voor autoscaling
+
+# --- Metrics Server (kube-system namespace) ---
+
+- name: Controleer of Metrics Server al geïnstalleerd is
+  ansible.builtin.command: kubectl get deployment metrics-server -n kube-system
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: metrics_server_status
+  failed_when: false
+  changed_when: false
+
+- name: Metrics Server installeren (kube-system namespace)
+  ansible.builtin.command: >
+    kubectl apply -f
+    https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  when: metrics_server_status.rc != 0
+  changed_when: true
+
+- name: Metrics Server patch voor insecure TLS (homelab/colocatie zonder TLS certs)
+  ansible.builtin.command: >
+    kubectl patch deployment metrics-server -n kube-system
+    --type=json
+    -p='[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--kubelet-insecure-tls"}]'
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  when: metrics_server_status.rc != 0
+  changed_when: true
+
+# --- Monitoring stack (Prometheus + Grafana + Alertmanager) ---
+
+- name: Helm repo voor Prometheus-community toevoegen
+  ansible.builtin.command: >
+    helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  changed_when: true
+
+- name: Helm repos updaten
+  ansible.builtin.command: helm repo update
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  changed_when: true
+
+- name: Namespace monitoring aanmaken
+  ansible.builtin.command: kubectl create namespace {{ ns_monitoring }}
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: ns_monitoring_result
+  failed_when: ns_monitoring_result.rc not in [0, 1]
+  changed_when: ns_monitoring_result.rc == 0
+
+- name: PVC manifest voor monitoring-data schrijven
+  ansible.builtin.copy:
+    dest: /tmp/pvc-monitoring-storage.yml
+    content: |
+      apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: monitoring-storage
+        namespace: {{ ns_monitoring }}
+      spec:
+        accessModes:
+          - ReadWriteMany
+        storageClassName: {{ nfs_storageclass_name }}
+        resources:
+          requests:
+            storage: 20Gi
+
+- name: PVC voor monitoring-data aanmaken (NFS:/mnt/pool/monitoring-data)
+  ansible.builtin.command: kubectl apply -f /tmp/pvc-monitoring-storage.yml
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  changed_when: true
+
+- name: Controleer of prometheus-stack al geïnstalleerd is
+  ansible.builtin.command: helm status prometheus-stack -n {{ ns_monitoring }}
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: prom_status
+  failed_when: false
+  changed_when: false
+
+- name: kube-prometheus-stack installeren (Prometheus + Grafana + Alertmanager)
+  ansible.builtin.command: >
+    helm install prometheus-stack
+    prometheus-community/kube-prometheus-stack
+    --namespace {{ ns_monitoring }}
+    --set grafana.adminPassword={{ grafana_admin_password }}
+    --set grafana.service.type=NodePort
+    --set grafana.service.nodePort=32000
+    --set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.storageClassName={{ nfs_storageclass_name }}
+    --set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.resources.requests.storage=20Gi
+    --set alertmanager.alertmanagerSpec.storage.volumeClaimTemplate.spec.storageClassName={{ nfs_storageclass_name }}
+    --set alertmanager.alertmanagerSpec.storage.volumeClaimTemplate.spec.resources.requests.storage=5Gi
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  when: prom_status.rc != 0
+  changed_when: true

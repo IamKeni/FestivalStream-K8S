@@ -1,0 +1,66 @@
+---
+# Namespace: ingress-nginx
+# Diagram: NGINX Ingress Controller (TLS-terminatie, path/host routing, RBAC policies)
+
+- name: Controleer of ingress-nginx namespace al bestaat
+  ansible.builtin.command: kubectl get namespace {{ ns_ingress }}
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: ingress_ns_status
+  failed_when: false
+  changed_when: false
+
+- name: NGINX Ingress Controller installeren via officiële manifests
+  ansible.builtin.command: >
+    kubectl apply -f
+    https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.10.1/deploy/static/provider/cloud/deploy.yaml
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  when: ingress_ns_status.rc != 0
+  changed_when: true
+
+- name: Wachten tot NGINX Ingress Controller beschikbaar is
+  ansible.builtin.command: >
+    kubectl rollout status deployment/ingress-nginx-controller
+    -n {{ ns_ingress }} --timeout=180s
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  changed_when: false
+
+- name: Ingress manifest naar tijdelijk bestand schrijven
+  ansible.builtin.copy:
+    dest: /tmp/homelab-ingress.yml
+    content: |
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata:
+        name: homelab-ingress
+        namespace: {{ ns_applicatie }}
+        annotations:
+          nginx.ingress.kubernetes.io/ssl-redirect: "true"
+          nginx.ingress.kubernetes.io/use-regex: "true"
+      spec:
+        ingressClassName: nginx
+        rules:
+          - http:
+              paths:
+                - path: /web
+                  pathType: Prefix
+                  backend:
+                    service:
+                      name: web-interface
+                      port:
+                        number: 80
+                - path: /stream
+                  pathType: Prefix
+                  backend:
+                    service:
+                      name: streaming-vod-service
+                      port:
+                        number: 80
+
+- name: Ingress voor /web en /stream routes aanmaken (namespace ns_applicatie)
+  ansible.builtin.command: kubectl apply -f /tmp/homelab-ingress.yml
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  changed_when: true

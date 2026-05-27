@@ -1,0 +1,305 @@
+---
+# Namespace: applicatie
+# Diagram: Web Interface (Pod, ClusterIP, Ingress: /web)
+#          Streaming & VOD Service (Pod, ClusterIP, Ingress: /stream)
+#          PVC: web-storage en stream-storage (NFS-backed)
+#          HPA + Metrics Server voor autoscaling
+#          Rolling Update Strategy + Self-healing
+
+- name: Namespace applicatie aanmaken
+  ansible.builtin.command: kubectl create namespace {{ ns_applicatie }}
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: ns_app
+  failed_when: ns_app.rc not in [0, 1]
+  changed_when: ns_app.rc == 0
+
+# --- PersistentVolumeClaims (NFS-backed conform diagram) ---
+
+- name: PVC manifest voor Web Interface schrijven
+  ansible.builtin.copy:
+    dest: /tmp/pvc-web-storage.yml
+    content: |
+      apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: web-storage
+        namespace: {{ ns_applicatie }}
+      spec:
+        accessModes:
+          - ReadWriteMany
+        storageClassName: {{ nfs_storageclass_name }}
+        resources:
+          requests:
+            storage: 5Gi
+
+- name: PVC voor Web Interface aanmaken (web-storage)
+  ansible.builtin.command: kubectl apply -f /tmp/pvc-web-storage.yml
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  changed_when: true
+
+- name: PVC manifest voor Streaming & VOD Service schrijven
+  ansible.builtin.copy:
+    dest: /tmp/pvc-stream-storage.yml
+    content: |
+      apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: stream-storage
+        namespace: {{ ns_applicatie }}
+      spec:
+        accessModes:
+          - ReadWriteMany
+        storageClassName: {{ nfs_storageclass_name }}
+        resources:
+          requests:
+            storage: 50Gi
+
+- name: PVC voor Streaming & VOD Service aanmaken (stream-storage)
+  ansible.builtin.command: kubectl apply -f /tmp/pvc-stream-storage.yml
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  changed_when: true
+
+# --- Web Interface Deployment ---
+
+- name: Web Interface Deployment manifest schrijven
+  ansible.builtin.copy:
+    dest: /tmp/deployment-web-interface.yml
+    content: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: web-interface
+        namespace: {{ ns_applicatie }}
+        labels:
+          app: web-interface
+      spec:
+        replicas: 2
+        selector:
+          matchLabels:
+            app: web-interface
+        strategy:
+          type: RollingUpdate
+          rollingUpdate:
+            maxSurge: 1
+            maxUnavailable: 0
+        template:
+          metadata:
+            labels:
+              app: web-interface
+          spec:
+            containers:
+              - name: web-interface
+                image: nginx:1.25-alpine
+                ports:
+                  - containerPort: 80
+                resources:
+                  requests:
+                    cpu: "100m"
+                    memory: "128Mi"
+                  limits:
+                    cpu: "500m"
+                    memory: "512Mi"
+                livenessProbe:
+                  httpGet:
+                    path: /web
+                    port: 80
+                  initialDelaySeconds: 10
+                  periodSeconds: 15
+                readinessProbe:
+                  httpGet:
+                    path: /web
+                    port: 80
+                  initialDelaySeconds: 5
+                  periodSeconds: 10
+                volumeMounts:
+                  - name: web-data
+                    mountPath: /usr/share/nginx/html
+            volumes:
+              - name: web-data
+                persistentVolumeClaim:
+                  claimName: web-storage
+
+- name: Web Interface Deployment aanmaken
+  ansible.builtin.command: kubectl apply -f /tmp/deployment-web-interface.yml
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  changed_when: true
+
+- name: Web Interface Service manifest schrijven (ClusterIP)
+  ansible.builtin.copy:
+    dest: /tmp/service-web-interface.yml
+    content: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: web-interface
+        namespace: {{ ns_applicatie }}
+      spec:
+        type: ClusterIP
+        selector:
+          app: web-interface
+        ports:
+          - protocol: TCP
+            port: 80
+            targetPort: 80
+
+- name: Web Interface Service aanmaken (ClusterIP)
+  ansible.builtin.command: kubectl apply -f /tmp/service-web-interface.yml
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  changed_when: true
+
+# --- Streaming & VOD Service Deployment ---
+
+- name: Streaming & VOD Service Deployment manifest schrijven
+  ansible.builtin.copy:
+    dest: /tmp/deployment-streaming-vod.yml
+    content: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: streaming-vod-service
+        namespace: {{ ns_applicatie }}
+        labels:
+          app: streaming-vod-service
+      spec:
+        replicas: 2
+        selector:
+          matchLabels:
+            app: streaming-vod-service
+        strategy:
+          type: RollingUpdate
+          rollingUpdate:
+            maxSurge: 1
+            maxUnavailable: 0
+        template:
+          metadata:
+            labels:
+              app: streaming-vod-service
+          spec:
+            containers:
+              - name: streaming-vod-service
+                image: nginx:1.25-alpine
+                ports:
+                  - containerPort: 80
+                resources:
+                  requests:
+                    cpu: "250m"
+                    memory: "256Mi"
+                  limits:
+                    cpu: "1000m"
+                    memory: "1Gi"
+                livenessProbe:
+                  httpGet:
+                    path: /stream
+                    port: 80
+                  initialDelaySeconds: 10
+                  periodSeconds: 15
+                readinessProbe:
+                  httpGet:
+                    path: /stream
+                    port: 80
+                  initialDelaySeconds: 5
+                  periodSeconds: 10
+                volumeMounts:
+                  - name: stream-data
+                    mountPath: /data/streams
+            volumes:
+              - name: stream-data
+                persistentVolumeClaim:
+                  claimName: stream-storage
+
+- name: Streaming & VOD Service Deployment aanmaken
+  ansible.builtin.command: kubectl apply -f /tmp/deployment-streaming-vod.yml
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  changed_when: true
+
+- name: Streaming & VOD Service manifest schrijven (ClusterIP)
+  ansible.builtin.copy:
+    dest: /tmp/service-streaming-vod.yml
+    content: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: streaming-vod-service
+        namespace: {{ ns_applicatie }}
+      spec:
+        type: ClusterIP
+        selector:
+          app: streaming-vod-service
+        ports:
+          - protocol: TCP
+            port: 80
+            targetPort: 80
+
+- name: Streaming & VOD Service aanmaken (ClusterIP)
+  ansible.builtin.command: kubectl apply -f /tmp/service-streaming-vod.yml
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  changed_when: true
+
+# --- HPA: Autoscaling (diagram: Autoscaling – HPA, Metrics Server) ---
+
+- name: HPA manifest voor Web Interface schrijven
+  ansible.builtin.copy:
+    dest: /tmp/hpa-web-interface.yml
+    content: |
+      apiVersion: autoscaling/v2
+      kind: HorizontalPodAutoscaler
+      metadata:
+        name: web-interface-hpa
+        namespace: {{ ns_applicatie }}
+      spec:
+        scaleTargetRef:
+          apiVersion: apps/v1
+          kind: Deployment
+          name: web-interface
+        minReplicas: 2
+        maxReplicas: 6
+        metrics:
+          - type: Resource
+            resource:
+              name: cpu
+              target:
+                type: Utilization
+                averageUtilization: 70
+
+- name: HPA voor Web Interface aanmaken
+  ansible.builtin.command: kubectl apply -f /tmp/hpa-web-interface.yml
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  changed_when: true
+
+- name: HPA manifest voor Streaming & VOD Service schrijven
+  ansible.builtin.copy:
+    dest: /tmp/hpa-streaming-vod.yml
+    content: |
+      apiVersion: autoscaling/v2
+      kind: HorizontalPodAutoscaler
+      metadata:
+        name: streaming-vod-hpa
+        namespace: {{ ns_applicatie }}
+      spec:
+        scaleTargetRef:
+          apiVersion: apps/v1
+          kind: Deployment
+          name: streaming-vod-service
+        minReplicas: 2
+        maxReplicas: 8
+        metrics:
+          - type: Resource
+            resource:
+              name: cpu
+              target:
+                type: Utilization
+                averageUtilization: 70
+
+- name: HPA voor Streaming & VOD Service aanmaken
+  ansible.builtin.command: kubectl apply -f /tmp/hpa-streaming-vod.yml
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  changed_when: true

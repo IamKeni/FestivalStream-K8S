@@ -1,0 +1,9 @@
+---
+
+# FIX: overbodige 'stat' taak verwijderd. De 'creates' in de shell taak
+# zorgt al voor idempotentie — als kubelet.conf bestaat, wordt de join overgeslagen.
+
+- name: Worker automatisch laten joinen
+  ansible.builtin.shell: "{{ hostvars['k8s-master'].kube_join_command }} --ignore-preflight-errors=all"
+  args:
+    creates: /etc/kubernetes/kubelet.conf

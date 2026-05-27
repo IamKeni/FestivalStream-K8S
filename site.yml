@@ -1,0 +1,80 @@
+---
+
+- name: System update op alle nodes
+  hosts: all
+  become: true
+  roles:
+    - system
+
+- name: Basisconfig op alle nodes
+  hosts: all
+  become: true
+  roles:
+    - common
+
+- name: Container runtime installeren op alle nodes (containerd)
+  hosts: all
+  become: true
+  roles:
+    - containerd
+
+- name: Kubernetes packages installeren op alle nodes
+  hosts: all
+  become: true
+  roles:
+    - kubernetes
+
+- name: Master node initialiseren (kube-system namespace)
+  hosts: master
+  become: true
+  roles:
+    - master
+
+- name: Worker nodes joinen cluster
+  hosts: workers
+  become: true
+  roles:
+    - worker
+
+# Namespace: applicatie (Web Interface + Streaming & VOD Service)
+- name: homelab applicatie deployen (namespace applicatie)
+  hosts: master
+  become: true
+  roles:
+    - applicatie
+
+
+# Namespace: ingress-nginx
+- name: NGINX Ingress Controller installeren (namespace ingress-nginx)
+  hosts: master
+  become: true
+  roles:
+    - ingress
+
+# NFS CSI Driver + PVCs voor applicatie-opslag
+- name: NFS CSI Driver + StorageClass installeren
+  hosts: master
+  become: true
+  roles:
+    - nfs
+
+# Namespace: monitoring (Prometheus, Grafana, Alertmanager)
+- name: Monitoring stack installeren (namespace monitoring)
+  hosts: master
+  become: true
+  roles:
+    - monitoring
+
+# Namespace: logging (Loki, Promtail)
+- name: Loki logging stack installeren (namespace logging)
+  hosts: master
+  become: true
+  roles:
+    - logging
+
+# Namespace: argocd
+- name: ArgoCD GitOps installeren (namespace argocd)
+  hosts: master
+  become: true
+  roles:
+    - argocd

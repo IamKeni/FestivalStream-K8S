@@ -1,0 +1,147 @@
+---
+# Namespace: logging
+# Diagram: Loki (log aggregatie), Promtail (DaemonSet – verzamelt logs van alle pods)
+#          NFS mount: /mnt/pool/audit-logs (PVC: audit-logs-storage)
+
+- name: Helm repo voor Grafana (Loki) toevoegen
+  ansible.builtin.command: >
+    helm repo add grafana https://grafana.github.io/helm-charts
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  changed_when: true
+
+- name: Helm repos updaten
+  ansible.builtin.command: helm repo update
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  changed_when: true
+
+- name: Namespace logging aanmaken
+  ansible.builtin.command: kubectl create namespace {{ ns_logging }}
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: ns_logging_result
+  failed_when: ns_logging_result.rc not in [0, 1]
+  changed_when: ns_logging_result.rc == 0
+
+- name: PVC manifest voor audit-logs schrijven
+  ansible.builtin.copy:
+    dest: /tmp/pvc-audit-logs.yml
+    content: |
+      apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: audit-logs-storage
+        namespace: {{ ns_logging }}
+      spec:
+        accessModes:
+          - ReadWriteMany
+        storageClassName: {{ nfs_storageclass_name }}
+        resources:
+          requests:
+            storage: 10Gi
+
+- name: PVC voor audit-logs aanmaken (NFS:/mnt/pool/audit-logs)
+  ansible.builtin.command: kubectl apply -f /tmp/pvc-audit-logs.yml
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  changed_when: true
+
+# --- Loki ---
+
+- name: Loki values bestand kopiëren naar node
+  ansible.builtin.template:
+    src: loki-values.yaml.j2
+    dest: /tmp/loki-values.yaml
+    mode: "0644"
+
+- name: Controleer of Loki al geïnstalleerd is
+  ansible.builtin.command: helm status loki -n {{ ns_logging }}
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: loki_status
+  failed_when: false
+  changed_when: false
+
+- name: Loki installeren (namespace logging)
+  ansible.builtin.command: >
+    helm install loki grafana/loki
+    --namespace {{ ns_logging }}
+    -f /tmp/loki-values.yaml
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  when: loki_status.rc != 0
+  changed_when: true
+
+- name: Wachten tot Loki Running is
+  ansible.builtin.command: >
+    kubectl wait pod
+    --for=condition=Ready
+    --selector=app.kubernetes.io/name=loki
+    --timeout=300s
+    -n {{ ns_logging }}
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  changed_when: false
+
+# --- Promtail (DaemonSet – log collector op alle nodes) ---
+
+- name: Promtail values bestand kopiëren naar node
+  ansible.builtin.template:
+    src: promtail-values.yaml.j2
+    dest: /tmp/promtail-values.yaml
+    mode: "0644"
+
+- name: Controleer of Promtail al geïnstalleerd is
+  ansible.builtin.command: helm status promtail -n {{ ns_logging }}
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: promtail_status
+  failed_when: false
+  changed_when: false
+
+- name: Promtail installeren (DaemonSet in namespace logging)
+  ansible.builtin.command: >
+    helm install promtail grafana/promtail
+    --namespace {{ ns_logging }}
+    -f /tmp/promtail-values.yaml
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  when: promtail_status.rc != 0
+  changed_when: true
+
+- name: Controleer of Promtail op alle nodes draait
+  ansible.builtin.command: kubectl get pods -n {{ ns_logging }} -l app.kubernetes.io/name=promtail
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  changed_when: false
+
+# --- Loki als datasource toevoegen aan Grafana ---
+
+- name: Wacht tot Grafana bereikbaar is
+  ansible.builtin.command: >
+    kubectl wait pod
+    --for=condition=Ready
+    --selector=app.kubernetes.io/name=grafana
+    --timeout=120s
+    -n {{ ns_monitoring }}
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  changed_when: false
+
+- name: Loki datasource toevoegen aan Grafana via API
+  ansible.builtin.uri:
+    url: "http://{{ master_ip }}:32000/api/datasources"
+    method: POST
+    user: admin
+    password: "{{ grafana_admin_password }}"
+    force_basic_auth: true
+    body_format: json
+    body:
+      name: Loki
+      type: loki
+      url: "http://loki.{{ ns_logging }}.svc.cluster.local:3100"
+      access: proxy
+      isDefault: false
+    status_code: [200, 409]
+  changed_when: true

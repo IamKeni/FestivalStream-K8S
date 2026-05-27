@@ -1,0 +1,46 @@
+cluster_name: homelab-cluster
+
+master_ip: 192.168.1.50
+worker_ips:
+  - 192.168.1.51
+  - 192.168.1.52
+
+pod_network_cidr: 10.244.0.0/16
+
+hosts_entries:
+  - { ip: "192.168.1.50", name: "k8s-master",  fqdn: "k8smaster.leerteam3.lab" }
+  - { ip: "192.168.1.51", name: "k8s-worker1", fqdn: "k8sworker1.leerteam3.lab" }
+  - { ip: "192.168.1.52", name: "k8s-worker2", fqdn: "k8sworker2.leerteam3.lab" }
+
+nfs_server: 192.168.1.20
+nfs_storageclass_name: nfs-client
+
+# NFS exports per namespace (conform diagram TrueNAS Server)
+nfs_paths:
+  web:        /mnt/pool/web-data
+  stream:     /mnt/pool/stream-data
+  monitoring: /mnt/pool/monitoring-data
+  audit_logs: /mnt/pool/audit-logs
+
+# Default NFS path (basis voor NFS provisioner)
+nfs_path: /mnt/pool/stream-data
+
+grafana_admin_password: "Admin1234!"
+
+# ArgoCD NodePort (diagram: namespace argocd)
+argocd_nodeport_http: 32080
+argocd_nodeport_https: 32443
+
+# Kubernetes versie
+k8s_version: "1.32"
+
+# -------------------------------------------------------
+# Namespace namen – exact conform deployment diagram
+# -------------------------------------------------------
+ns_kube_system:     kube-system        # kube-apiserver, etcd, Calico, Metrics Server
+ns_ingress:         ingress-nginx      # NGINX Ingress Controller
+ns_argocd:          argocd             # ArgoCD GitOps
+ns_applicatie:      applicatie         # Web Interface, Streaming & VOD Service, HPA
+ns_monitoring:      monitoring         # Prometheus, Grafana, Alertmanager
+ns_logging:         logging            # Loki + Promtail (log collector)
+ns_nfs_driver:      nfs-system         # NFS CSI Driver (Storage Driver)

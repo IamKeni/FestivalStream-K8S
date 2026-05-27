@@ -1,0 +1,67 @@
+---
+
+- name: Hostname instellen
+  ansible.builtin.hostname:
+    name: "{{ inventory_hostname }}"
+
+- name: /etc/hosts entries toevoegen
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    line: "{{ item.ip }} {{ item.name }} {{ item.fqdn }}"
+    state: present
+  loop: "{{ hosts_entries }}"
+
+- name: IPv6 uitschakelen via sysctl
+  ansible.builtin.copy:
+    dest: /etc/sysctl.d/99-disable-ipv6.conf
+    content: |
+      net.ipv6.conf.all.disable_ipv6 = 1
+      net.ipv6.conf.default.disable_ipv6 = 1
+      net.ipv6.conf.lo.disable_ipv6 = 1
+  notify: reload sysctl
+
+- name: Swap direct uitschakelen
+  ansible.builtin.command: swapoff -a
+  when: ansible_swaptotal_mb | int > 0
+  changed_when: true
+
+- name: Swap permanent uitschakelen in /etc/fstab
+  ansible.builtin.replace:
+    path: /etc/fstab
+    regexp: '^\s*([^#]\S+)\s+\S+\s+swap\s+'
+    replace: '# \1 swap disabled by Ansible'
+
+- name: Kernel modules config voor Kubernetes
+  ansible.builtin.copy:
+    dest: /etc/modules-load.d/k8s.conf
+    content: |
+      overlay
+      br_netfilter
+
+- name: Kernel modules laden
+  ansible.builtin.modprobe:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - overlay
+    - br_netfilter
+
+- name: Netwerk sysctl voor Kubernetes
+  ansible.builtin.copy:
+    dest: /etc/sysctl.d/k8s.conf
+    content: |
+      net.bridge.bridge-nf-call-iptables = 1
+      net.bridge.bridge-nf-call-ip6tables = 1
+      net.ipv4.ip_forward = 1
+  notify: reload sysctl
+
+# Ubuntu 24.04: sysctl handlers zijn asynchroon — flush zodat instellingen
+# actief zijn vóór containerd en kubelet starten.
+- name: Handlers direct toepassen (sysctl)
+  meta: flush_handlers
+
+- name: nfs-common installeren (alle nodes)
+  ansible.builtin.apt:
+    name: nfs-common
+    state: present
+    update_cache: true

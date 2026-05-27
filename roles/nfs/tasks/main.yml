@@ -1,0 +1,70 @@
+---
+# Namespace: nfs-system  (diagram: "Namespace: Storage Driver")
+# Component:  NFS CSI Driver (DaemonSet) – US-01 | Must | F
+#
+# TrueNAS NFS exports (diagram):
+#   /mnt/pool/web-data        → PVC: web-storage        (namespace: applicatie)
+#   /mnt/pool/stream-data     → PVC: stream-storage      (namespace: applicatie)
+#   /mnt/pool/monitoring-data → PVC: monitoring-storage  (namespace: monitoring)
+#   /mnt/pool/audit-logs      → PVC: audit-logs-storage  (namespace: logging)
+#
+# StorageClass: nfs-client  (conform diagram PVC labels)
+
+- name: Helm installeren (indien nog niet aanwezig)
+  ansible.builtin.shell: |
+    curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+  args:
+    creates: /usr/local/bin/helm
+
+- name: Namespace nfs-system aanmaken (Storage Driver)
+  ansible.builtin.command: kubectl create namespace {{ ns_nfs_driver }}
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: ns_nfs
+  failed_when: ns_nfs.rc not in [0, 1]
+  changed_when: ns_nfs.rc == 0
+
+- name: NFS Subdir External Provisioner repo toevoegen
+  ansible.builtin.command: >
+    helm repo add nfs-subdir-external-provisioner
+    https://kubernetes-sigs.github.io/nfs-subdir-external-provisioner/
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  changed_when: true
+
+- name: Helm repos updaten
+  ansible.builtin.command: helm repo update
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  changed_when: true
+
+- name: Controleer of NFS provisioner al geïnstalleerd is
+  ansible.builtin.command: helm status nfs-provisioner -n {{ ns_nfs_driver }}
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: nfs_helm_status
+  failed_when: false
+  changed_when: false
+
+- name: NFS provisioner installeren in namespace nfs-system
+  ansible.builtin.command: >
+    helm install nfs-provisioner
+    nfs-subdir-external-provisioner/nfs-subdir-external-provisioner
+    --namespace {{ ns_nfs_driver }}
+    --set nfs.server={{ nfs_server }}
+    --set nfs.path={{ nfs_path }}
+    --set storageClass.name={{ nfs_storageclass_name }}
+    --set storageClass.defaultClass=true
+    --set storageClass.reclaimPolicy=Retain
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  when: nfs_helm_status.rc != 0
+  changed_when: true
+
+- name: Wachten tot NFS CSI Driver (provisioner) beschikbaar is
+  ansible.builtin.command: >
+    kubectl rollout status deployment/nfs-provisioner-nfs-subdir-external-provisioner
+    -n {{ ns_nfs_driver }} --timeout=120s
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  changed_when: false

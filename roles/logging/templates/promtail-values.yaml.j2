@@ -1,0 +1,41 @@
+config:
+  clients:
+    - url: http://loki.logging.svc.cluster.local:3100/loki/api/v1/push
+
+  snippets:
+    pipelineStages:
+      - cri: {}
+
+    scrapeConfigs: |
+      - job_name: kubernetes-pods
+        kubernetes_sd_configs:
+          - role: pod
+        relabel_configs:
+          # Labels meenemen uit Kubernetes metadata
+          - source_labels: [__meta_kubernetes_pod_node_name]
+            target_label: node
+          - source_labels: [__meta_kubernetes_namespace]
+            target_label: namespace
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+          - source_labels: [__meta_kubernetes_pod_container_name]
+            target_label: container
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            target_label: app
+          # Log pad instellen
+          - source_labels: [__meta_kubernetes_pod_uid, __meta_kubernetes_pod_container_name]
+            target_label: __path__
+            separator: /
+            replacement: /var/log/pods/*$1/*.log
+
+# Promtail draait als DaemonSet op elke node
+daemonset:
+  enabled: true
+
+tolerations:
+  - key: node-role.kubernetes.io/control-plane
+    operator: Exists
+    effect: NoSchedule
+  - key: node-role.kubernetes.io/master
+    operator: Exists
+    effect: NoSchedule

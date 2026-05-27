@@ -1,0 +1,49 @@
+---
+
+- name: Control-plane al geïnitialiseerd?
+  ansible.builtin.stat:
+    path: /etc/kubernetes/admin.conf
+  register: k8s_admin_conf
+
+- name: kubeadm init uitvoeren
+  ansible.builtin.command: >
+    kubeadm init
+    --apiserver-advertise-address={{ master_ip }}
+    --pod-network-cidr={{ pod_network_cidr }}
+    --ignore-preflight-errors=NumCPU
+  when: not k8s_admin_conf.stat.exists
+  register: kubeadm_init
+  changed_when: "'Your Kubernetes control-plane has initialized successfully' in kubeadm_init.stdout"
+
+- name: kubeconfig directory voor gebruiker
+  ansible.builtin.file:
+    path: /home/{{ ansible_user }}/.kube
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0700"
+
+- name: admin.conf kopiëren
+  ansible.builtin.copy:
+    src: /etc/kubernetes/admin.conf
+    dest: /home/{{ ansible_user }}/.kube/config
+    remote_src: true
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0600"
+
+- name: Calico CNI installeren
+  ansible.builtin.command: >
+    kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico.yaml
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  changed_when: true
+
+- name: Join command genereren voor workers
+  ansible.builtin.command: kubeadm token create --print-join-command
+  register: join_cmd
+  changed_when: false
+
+- name: Join command opslaan als fact
+  ansible.builtin.set_fact:
+    kube_join_command: "{{ join_cmd.stdout }}"

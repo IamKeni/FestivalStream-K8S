@@ -1,0 +1,63 @@
+---
+# Namespace: argocd
+# Diagram: ArgoCD (GitOps CD, Git Pull/Sync via HTTPS)
+#          NodePort: 32080 (HTTP), 32443 (HTTPS)
+
+- name: Namespace argocd aanmaken
+  ansible.builtin.command: kubectl create namespace {{ ns_argocd }}
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: ns_argocd_result
+  failed_when: ns_argocd_result.rc not in [0, 1]
+  changed_when: ns_argocd_result.rc == 0
+
+- name: Controleer of ArgoCD al geïnstalleerd is
+  ansible.builtin.command: kubectl get deployment argocd-server -n {{ ns_argocd }}
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: argocd_status
+  failed_when: false
+  changed_when: false
+
+- name: ArgoCD installeren via officiële manifests
+  ansible.builtin.command: >
+    kubectl apply -n {{ ns_argocd }} --server-side --force-conflicts
+    -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  when: argocd_status.rc != 0
+  changed_when: true
+
+- name: Wachten tot ArgoCD server deployment beschikbaar is
+  ansible.builtin.command: >
+    kubectl rollout status deployment/argocd-server -n {{ ns_argocd }} --timeout=180s
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  changed_when: false
+
+- name: ArgoCD server service patchen naar NodePort (HTTP:32080, HTTPS:32443)
+  ansible.builtin.command: >
+    kubectl patch svc argocd-server -n {{ ns_argocd }}
+    -p '{"spec":{"type":"NodePort","ports":[{"port":80,"targetPort":8080,"nodePort":{{ argocd_nodeport_http }},"name":"http"},{"port":443,"targetPort":8080,"nodePort":{{ argocd_nodeport_https }},"name":"https"}]}}'
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  changed_when: true
+
+- name: ArgoCD initieel admin wachtwoord ophalen
+  ansible.builtin.command: >
+    kubectl get secret argocd-initial-admin-secret -n {{ ns_argocd }}
+    -o jsonpath="{.data.password}"
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: argocd_admin_password_b64
+  changed_when: false
+  failed_when: false
+
+- name: Admin wachtwoord decoderen
+  ansible.builtin.set_fact:
+    argocd_admin_password: "{{ argocd_admin_password_b64.stdout | b64decode }}"
+  when: argocd_admin_password_b64.rc == 0
+
+- name: ArgoCD admin wachtwoord tonen
+  ansible.builtin.debug:
+    msg: "ArgoCD initieel admin wachtwoord: {{ argocd_admin_password | default('Secret niet gevonden – mogelijk al gewijzigd') }}"

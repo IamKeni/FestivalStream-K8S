@@ -1,0 +1,46 @@
+---
+
+# FIX: k8s_version variabele uit group_vars gebruiken zodat versie op één plek
+# beheerd wordt. Versie bijgewerkt naar 1.32 (1.29 is EOL).
+
+- name: /etc/apt/keyrings directory aanmaken
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: '0755'
+
+- name: Kubernetes GPG key downloaden en opslaan
+  ansible.builtin.shell: |
+    curl -fsSL https://pkgs.k8s.io/core:/stable:/v{{ k8s_version }}/deb/Release.key | \
+    gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+  args:
+    creates: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+
+- name: Kubernetes repo toevoegen
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/kubernetes.list
+    content: |
+      deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v{{ k8s_version }}/deb/ /
+
+- name: apt cache updaten
+  ansible.builtin.apt:
+    update_cache: true
+
+- name: kubelet, kubeadm, kubectl installeren
+  ansible.builtin.apt:
+    name:
+      - kubelet
+      - kubeadm
+      - kubectl
+    state: present
+
+- name: Kubernetes packages op hold zetten
+  ansible.builtin.shell: |
+    apt-mark showhold | grep -q kubelet || apt-mark hold kubelet kubeadm kubectl
+  changed_when: false
+
+- name: kubelet service starten en inschakelen
+  ansible.builtin.systemd:
+    name: kubelet
+    enabled: true
+    state: started
