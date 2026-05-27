@@ -1,0 +1,65 @@
+---
+# Namespace: metallb-system
+# Diagram: MetalLB speaker + controller (DaemonSet) – wijst extern IP toe aan LoadBalancer Services
+
+- name: Controleer of MetalLB al geïnstalleerd is
+  ansible.builtin.command: kubectl get namespace {{ ns_metallb }}
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: metallb_ns_status
+  failed_when: false
+  changed_when: false
+
+- name: MetalLB installeren via officiële manifests
+  ansible.builtin.command: >
+    kubectl apply -f
+    https://raw.githubusercontent.com/metallb/metallb/v0.14.5/config/manifests/metallb-native.yaml
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  when: metallb_ns_status.rc != 0
+  changed_when: true
+
+- name: Wachten tot MetalLB controller beschikbaar is
+  ansible.builtin.command: >
+    kubectl rollout status deployment/controller -n {{ ns_metallb }} --timeout=120s
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  changed_when: false
+
+- name: MetalLB IPAddressPool manifest schrijven
+  ansible.builtin.copy:
+    dest: /tmp/metallb-ippool.yml
+    content: |
+      apiVersion: metallb.io/v1beta1
+      kind: IPAddressPool
+      metadata:
+        name: homelab-pool
+        namespace: {{ ns_metallb }}
+      spec:
+        addresses:
+          - {{ metallb_ip_pool }}
+
+- name: MetalLB IPAddressPool aanmaken
+  ansible.builtin.command: kubectl apply -f /tmp/metallb-ippool.yml
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  changed_when: true
+
+- name: MetalLB L2Advertisement manifest schrijven
+  ansible.builtin.copy:
+    dest: /tmp/metallb-l2advert.yml
+    content: |
+      apiVersion: metallb.io/v1beta1
+      kind: L2Advertisement
+      metadata:
+        name: homelab-l2advert
+        namespace: {{ ns_metallb }}
+      spec:
+        ipAddressPools:
+          - homelab-pool
+
+- name: MetalLB L2Advertisement aanmaken
+  ansible.builtin.command: kubectl apply -f /tmp/metallb-l2advert.yml
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  changed_when: true

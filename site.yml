@@ -36,14 +36,6 @@
   roles:
     - worker
 
-# Namespace: applicatie (Web Interface + Streaming & VOD Service)
-- name: homelab applicatie deployen (namespace applicatie)
-  hosts: master
-  become: true
-  roles:
-    - applicatie
-
-
 # Namespace: ingress-nginx
 - name: NGINX Ingress Controller installeren (namespace ingress-nginx)
   hosts: master
@@ -65,6 +57,12 @@
   roles:
     - monitoring
 
+# Namespace: logging (Loki, Promtail)
+- name: Loki logging stack installeren (namespace logging)
+  hosts: master
+  become: true
+  roles:
+    - logging
 
 # Namespace: argocd
 - name: ArgoCD GitOps installeren (namespace argocd)
@@ -73,9 +71,16 @@
   roles:
     - argocd
 
-# Namespace: logging (Loki, Promtail)
-- name: Loki logging stack installeren (namespace logging)
+# Namespace: metallb-system
+- name: MetalLB LoadBalancer installeren (namespace metallb-system)
   hosts: master
   become: true
   roles:
-    - logging
+    - metallb
+
+# Namespace: applicatie (Web Interface + Streaming & VOD Service)
+- name: homelab applicatie deployen (namespace applicatie)
+  hosts: master
+  become: true
+  roles:
+    - applicatie

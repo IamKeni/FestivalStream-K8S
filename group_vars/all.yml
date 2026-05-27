@@ -25,6 +25,9 @@ nfs_paths:
 # Default NFS path (basis voor NFS provisioner)
 nfs_path: /mnt/pool/stream-data
 
+# MetalLB IP pool (diagram: namespace metallb-system)
+metallb_ip_pool: "192.168.1.60-192.168.1.69"
+
 grafana_admin_password: "Admin1234!"
 
 # ArgoCD NodePort (diagram: namespace argocd)
@@ -43,4 +46,5 @@ ns_argocd:          argocd             # ArgoCD GitOps
 ns_applicatie:      applicatie         # Web Interface, Streaming & VOD Service, HPA
 ns_monitoring:      monitoring         # Prometheus, Grafana, Alertmanager
 ns_logging:         logging            # Loki + Promtail (log collector)
+ns_metallb:         metallb-system     # MetalLB speaker + controller
 ns_nfs_driver:      nfs-system         # NFS CSI Driver (Storage Driver)
