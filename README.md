@@ -260,3 +260,4 @@ Ansible-K8S/
 ```
 
 Calvin Wang
+Stan Beukers
