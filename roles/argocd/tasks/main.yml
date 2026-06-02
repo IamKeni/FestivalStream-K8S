@@ -61,3 +61,35 @@
 - name: ArgoCD admin wachtwoord tonen
   ansible.builtin.debug:
     msg: "ArgoCD initieel admin wachtwoord: {{ argocd_admin_password | default('Secret niet gevonden – mogelijk al gewijzigd') }}"
+
+- name: ArgoCD Ingress manifest schrijven
+  ansible.builtin.copy:
+    dest: /tmp/argocd-ingress.yml
+    content: |
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata:
+        name: argocd-ingress
+        namespace: {{ ns_argocd }}
+        annotations:
+          nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+          nginx.ingress.kubernetes.io/ssl-passthrough: "true"
+      spec:
+        ingressClassName: nginx
+        rules:
+        - host: argocd.leerteam3.lab
+          http:
+            paths:
+            - path: /
+              pathType: Prefix
+              backend:
+                service:
+                  name: argocd-server
+                  port:
+                    number: 443
+
+- name: ArgoCD Ingress toepassen
+  ansible.builtin.command: kubectl apply -f /tmp/argocd-ingress.yml
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  changed_when: true
