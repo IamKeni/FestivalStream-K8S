@@ -1,0 +1,131 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: festival-info-html
+  namespace: applicatie
+data:
+  index.html: |
+    <!DOCTYPE html>
+    <html lang="nl">
+    <head>
+      <meta charset="UTF-8">
+      <title>FestivalStream</title>
+      <style>
+        body { font-family: sans-serif; max-width: 600px; margin: 60px auto; padding: 0 20px; }
+        h1 { font-size: 2rem; margin-bottom: 0.25rem; }
+        p  { color: #555; }
+        ul { line-height: 2; }
+        .badge { display: inline-block; background: #e8f5e9; color: #2e7d32; padding: 2px 10px; border-radius: 4px; font-size: 0.85rem; }
+      </style>
+    </head>
+    <body>
+      <h1>FestivalStream</h1>
+      <p>Live streaming platform voor festivals — Kubernetes PoC</p>
+      <hr>
+      <h2>Services</h2>
+      <ul>
+        <li>Web Interface <span class="badge">online</span></li>
+        <li>Streaming &amp; VOD <span class="badge">online</span></li>
+        <li>Festival Info <span class="badge">online</span></li>
+      </ul>
+      <h2>Beveiliging</h2>
+      <ul>
+        <li>Calico NetworkPolicies actief</li>
+        <li>Kubernetes RBAC actief</li>
+        <li>Namespace-isolatie afgedwongen</li>
+      </ul>
+    </body>
+    </html>
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: festival-info
+  namespace: applicatie
+  labels:
+    app: festival-info
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: festival-info
+  template:
+    metadata:
+      labels:
+        app: festival-info
+    spec:
+      serviceAccountName: web-sa
+      containers:
+        - name: nginx
+          image: nginx:1.27-alpine
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: "10m"
+              memory: "16Mi"
+            limits:
+              cpu: "100m"
+              memory: "64Mi"
+          volumeMounts:
+            - name: html
+              mountPath: /usr/share/nginx/html
+      volumes:
+        - name: html
+          configMap:
+            name: festival-info-html
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: festival-info
+  namespace: applicatie
+spec:
+  type: ClusterIP
+  selector:
+    app: festival-info
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-festival-info-ingress
+  namespace: applicatie
+spec:
+  podSelector:
+    matchLabels:
+      app: festival-info
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 80
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: festival-info-ingress
+  namespace: applicatie
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  ingressClassName: nginx
+  rules:
+    - http:
+        paths:
+          - path: /festival
+            pathType: Prefix
+            backend:
+              service:
+                name: festival-info
+                port:
+                  number: 80
