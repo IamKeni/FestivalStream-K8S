@@ -62,8 +62,6 @@ kind: Ingress
 metadata:
   name: web-interface
   namespace: applicatie
-  annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
 spec:
   ingressClassName: nginx
   rules:
