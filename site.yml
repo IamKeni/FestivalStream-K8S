@@ -36,6 +36,13 @@
   roles:
     - worker
 
+# Namespace: metallb-system
+- name: MetalLB LoadBalancer installeren (namespace metallb-system)
+  hosts: master
+  become: true
+  roles:
+    - metallb
+
 # Namespace: ingress-nginx
 - name: NGINX Ingress Controller installeren (namespace ingress-nginx)
   hosts: master
@@ -70,13 +77,6 @@
   become: true
   roles:
     - argocd
-
-# Namespace: metallb-system
-- name: MetalLB LoadBalancer installeren (namespace metallb-system)
-  hosts: master
-  become: true
-  roles:
-    - metallb
 
 # Namespace: applicatie (Web Interface + Streaming & VOD Service)
 - name: homelab applicatie deployen (namespace applicatie)

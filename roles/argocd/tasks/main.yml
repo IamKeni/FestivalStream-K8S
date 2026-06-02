@@ -62,6 +62,30 @@
   ansible.builtin.debug:
     msg: "ArgoCD initieel admin wachtwoord: {{ argocd_admin_password | default('Secret niet gevonden – mogelijk al gewijzigd') }}"
 
+- name: ArgoCD server insecure mode aanzetten voor Ingress
+  ansible.builtin.command: >
+    kubectl patch configmap argocd-cmd-params-cm
+    -n {{ ns_argocd }}
+    --type merge
+    -p '{"data":{"server.insecure":"true"}}'
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  changed_when: true
+
+- name: ArgoCD server herstarten na insecure mode wijziging
+  ansible.builtin.command: >
+    kubectl rollout restart deployment argocd-server -n {{ ns_argocd }}
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  changed_when: true
+
+- name: Wachten tot ArgoCD server opnieuw beschikbaar is
+  ansible.builtin.command: >
+    kubectl rollout status deployment/argocd-server -n {{ ns_argocd }} --timeout=180s
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  changed_when: false
+
 - name: ArgoCD Ingress manifest schrijven
   ansible.builtin.copy:
     dest: /tmp/argocd-ingress.yml
@@ -72,8 +96,7 @@
         name: argocd-ingress
         namespace: {{ ns_argocd }}
         annotations:
-          nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
-          nginx.ingress.kubernetes.io/ssl-passthrough: "true"
+          nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
       spec:
         ingressClassName: nginx
         rules:
@@ -86,7 +109,7 @@
                 service:
                   name: argocd-server
                   port:
-                    number: 443
+                    number: 80
 
 - name: ArgoCD Ingress toepassen
   ansible.builtin.command: kubectl apply -f /tmp/argocd-ingress.yml

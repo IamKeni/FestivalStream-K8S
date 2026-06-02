@@ -106,3 +106,52 @@
     KUBECONFIG: /etc/kubernetes/admin.conf
   when: prom_status.rc != 0
   changed_when: true
+
+- name: Monitoring Ingress manifest schrijven
+  ansible.builtin.copy:
+    dest: /tmp/monitoring-ingress.yml
+    content: |
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata:
+        name: monitoring-ingress
+        namespace: {{ ns_monitoring }}
+      spec:
+        ingressClassName: nginx
+        rules:
+        - host: grafana.leerteam3.lab
+          http:
+            paths:
+            - path: /
+              pathType: Prefix
+              backend:
+                service:
+                  name: prometheus-stack-grafana
+                  port:
+                    number: 80
+        - host: prometheus.leerteam3.lab
+          http:
+            paths:
+            - path: /
+              pathType: Prefix
+              backend:
+                service:
+                  name: prometheus-stack-kube-prom-prometheus
+                  port:
+                    number: 9090
+        - host: alertmanager.leerteam3.lab
+          http:
+            paths:
+            - path: /
+              pathType: Prefix
+              backend:
+                service:
+                  name: prometheus-stack-kube-prom-alertmanager
+                  port:
+                    number: 9093
+
+- name: Monitoring Ingress toepassen
+  ansible.builtin.command: kubectl apply -f /tmp/monitoring-ingress.yml
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  changed_when: true
