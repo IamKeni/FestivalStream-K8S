@@ -144,14 +144,17 @@ kind: Ingress
 metadata:
   name: streaming-vod-service
   namespace: applicatie
+  annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
 spec:
   ingressClassName: nginx
   rules:
   - host: app.leerteam3.lab
     http:
       paths:
-      - path: /stream
-        pathType: Prefix
+      - path: /stream(/|$)(.*)
+        pathType: ImplementationSpecific
         backend:
           service:
             name: streaming-vod-service

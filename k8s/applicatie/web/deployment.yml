@@ -120,14 +120,17 @@ kind: Ingress
 metadata:
   name: web-interface
   namespace: applicatie
+  annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
 spec:
   ingressClassName: nginx
   rules:
   - host: app.leerteam3.lab
     http:
       paths:
-      - path: /web
-        pathType: Prefix
+      - path: /web(/|$)(.*)
+        pathType: ImplementationSpecific
         backend:
           service:
             name: web-interface
