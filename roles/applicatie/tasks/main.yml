@@ -1,11 +1,4 @@
 ---
-# Namespace: applicatie
-# Diagram: Web Interface (Pod, ClusterIP, Ingress: /web)
-#          Streaming & VOD Service (Pod, ClusterIP, Ingress: /stream)
-#          PVC: web-storage en stream-storage (NFS-backed)
-#          HPA + Metrics Server voor autoscaling
-#          Rolling Update Strategy + Self-healing
-
 - name: Namespace applicatie aanmaken
   ansible.builtin.command: kubectl create namespace {{ ns_applicatie }}
   environment:
