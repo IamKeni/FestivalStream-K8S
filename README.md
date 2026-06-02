@@ -123,9 +123,9 @@ ansible-playbook -i inventory.ini site.yml --tags applicatie
 | 7 | NGINX Ingress Controller, TLS-terminatie, routes `/web` + `/stream` | `ingress-nginx` | `ingress` |
 | 8 | NFS CSI Driver (DaemonSet), StorageClass `nfs-client` (default) | `nfs-system` | `nfs` |
 | 9 | Metrics Server + kube-prometheus-stack (Prometheus, Grafana, Alertmanager) | `kube-system` + `monitoring` | `monitoring` |
-| 10 | Loki + Promtail (DaemonSet), PVC `audit-logs-storage` (NFS), Loki datasource in Grafana | `logging` | `logging` |
+| 10 | Loki + Promtail (DaemonSet), PVC `audit-logs-storage` (NFS), Loki datasource in Grafana, RBAC + NetworkPolicies | `logging` | `logging` |
 | 11 | ArgoCD via officiële manifests, NodePort 32080/32443 | `argocd` | `argocd` |
-| 12 | Web Interface + Streaming & VOD Service, PVCs, HPA | `applicatie` | `applicatie` |
+| 12 | Web Interface + Streaming & VOD Service, PVCs, HPA, RBAC + NetworkPolicies | `applicatie` | `applicatie` |
 
 ### Namespaces na installatie
 
@@ -134,9 +134,9 @@ ansible-playbook -i inventory.ini site.yml --tags applicatie
 | `kube-system` | kube-apiserver, etcd, kubelet, kube-proxy, kube-scheduler, kube-controller-manager, containerd, Calico CNI, Metrics Server |
 | `ingress-nginx` | NGINX Ingress Controller |
 | `nfs-system` | NFS CSI Driver (DaemonSet), StorageClass `nfs-client` |
-| `applicatie` | Web Interface (Pod), Streaming & VOD Service (Pod), HPA, PVC `web-storage`, PVC `stream-storage` |
+| `applicatie` | Web Interface (Pod), Streaming & VOD Service (Pod), HPA, PVC `web-storage`, PVC `stream-storage`, ServiceAccount `web-sa`, NetworkPolicies |
 | `monitoring` | Prometheus, Grafana (NodePort:32000), Alertmanager, PVC `monitoring-storage` |
-| `logging` | Loki, Promtail (DaemonSet), PVC `audit-logs-storage` |
+| `logging` | Loki, Promtail (DaemonSet), PVC `audit-logs-storage`, ServiceAccount `promtail-sa`, ClusterRole, NetworkPolicies |
 | `argocd` | ArgoCD server, repo-server, application-controller |
 
 ### Niet expliciet gevraagd — maar wel meegenomen
@@ -157,6 +157,12 @@ ansible-playbook -i inventory.ini site.yml --tags applicatie
 | HPA op Web Interface (2–6 replicas) en Streaming (2–8 replicas) | `applicatie` | Autoscaling op basis van CPU (US-04.1, US-04.2) |
 | `reclaimPolicy: Retain` op StorageClass | `nfs` | Voorkomt dat NFS-data verloren gaat bij PVC-verwijdering |
 | Loki als datasource toevoegen aan Grafana via API | `logging` | Logs direct zichtbaar in Grafana zonder handmatige configuratie |
+| RBAC: `ServiceAccount web-sa` + `Role web-reader` + `RoleBinding` | `applicatie` | Pods draaien met minimale rechten (least privilege) |
+| RBAC: `ServiceAccount promtail-sa` + `ClusterRole promtail-logs-reader` + `ClusterRoleBinding` | `logging` | Promtail heeft cluster-breed leesrecht op pods/nodes/namespaces |
+| Calico NetworkPolicy `default-deny-all` in `applicatie` en `logging` | beide namespaces | Alle ongeautoriseerde pod-communicatie geblokkeerd by default |
+| NetworkPolicy `allow-from-ingress-nginx` | `applicatie` | Alleen NGINX Ingress mag applicatie-pods bereiken op poort 80 |
+| NetworkPolicy `allow-loki-ingress` | `logging` | Loki accepteert alleen verkeer van Promtail en Grafana (`monitoring`) |
+| NetworkPolicy `allow-promtail-egress` | `logging` | Promtail mag alleen naar Loki (3100) en DNS communiceren |
 
 ---
 
@@ -208,6 +214,15 @@ kubectl get hpa -n applicatie
 
 # Ingress routes controleren
 kubectl get ingress -n applicatie
+
+# RBAC controleren
+kubectl get serviceaccount -n applicatie
+kubectl get role,rolebinding -n applicatie
+kubectl get clusterrole,clusterrolebinding | grep promtail
+
+# NetworkPolicies controleren
+kubectl get networkpolicy -n applicatie
+kubectl get networkpolicy -n logging
 ```
 
 ---

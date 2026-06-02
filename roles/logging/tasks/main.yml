@@ -24,6 +24,45 @@
   failed_when: ns_logging_result.rc not in [0, 1]
   changed_when: ns_logging_result.rc == 0
 
+# RBAC: ServiceAccount en ClusterRole voor Promtail
+- name: RBAC manifest voor Promtail schrijven
+  ansible.builtin.copy:
+    dest: /tmp/rbac-promtail.yml
+    content: |
+      apiVersion: v1
+      kind: ServiceAccount
+      metadata:
+        name: promtail-sa
+        namespace: {{ ns_logging }}
+      ---
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRole
+      metadata:
+        name: promtail-logs-reader
+      rules:
+        - apiGroups: [""]
+          resources: ["pods", "nodes", "namespaces"]
+          verbs: ["get", "list", "watch"]
+      ---
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRoleBinding
+      metadata:
+        name: promtail-logs-reader-binding
+      subjects:
+        - kind: ServiceAccount
+          name: promtail-sa
+          namespace: {{ ns_logging }}
+      roleRef:
+        kind: ClusterRole
+        name: promtail-logs-reader
+        apiGroup: rbac.authorization.k8s.io
+
+- name: RBAC voor Promtail aanmaken
+  ansible.builtin.command: kubectl apply -f /tmp/rbac-promtail.yml
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  changed_when: true
+
 - name: PVC manifest voor audit-logs schrijven
   ansible.builtin.copy:
     dest: /tmp/pvc-audit-logs.yml
@@ -47,8 +86,7 @@
     KUBECONFIG: /etc/kubernetes/admin.conf
   changed_when: true
 
-# --- Loki ---
-
+# Loki
 - name: Loki values bestand kopiëren naar node
   ansible.builtin.template:
     src: loki-values.yaml.j2
@@ -144,4 +182,100 @@
       access: proxy
       isDefault: false
     status_code: [200, 409]
+  changed_when: true
+
+# Calico NetworkPolicies: logging namespace
+- name: NetworkPolicy manifest voor logging schrijven
+  ansible.builtin.copy:
+    dest: /tmp/netpol-logging.yml
+    content: |
+      # Standaard: blokkeer al het verkeer (deny-all)
+      apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: default-deny-all
+        namespace: {{ ns_logging }}
+      spec:
+        podSelector: {}
+        policyTypes:
+          - Ingress
+          - Egress
+      ---
+      # Sta inkomend verkeer toe naar Loki (poort 3100):
+      apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: allow-loki-ingress
+        namespace: {{ ns_logging }}
+      spec:
+        podSelector:
+          matchLabels:
+            app.kubernetes.io/name: loki
+        policyTypes:
+          - Ingress
+        ingress:
+          - from:
+              - podSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: promtail
+            ports:
+              - protocol: TCP
+                port: 3100
+          - from:
+              - namespaceSelector:
+                  matchLabels:
+                    kubernetes.io/metadata.name: {{ ns_monitoring }}
+            ports:
+              - protocol: TCP
+                port: 3100
+      ---
+      # Sta uitgaand verkeer toe van Promtail naar Loki en DNS
+      apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: allow-promtail-egress
+        namespace: {{ ns_logging }}
+      spec:
+        podSelector:
+          matchLabels:
+            app.kubernetes.io/name: promtail
+        policyTypes:
+          - Egress
+        egress:
+          - to:
+              - podSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: loki
+            ports:
+              - protocol: TCP
+                port: 3100
+          - ports:
+              - protocol: UDP
+                port: 53
+              - protocol: TCP
+                port: 53
+      ---
+      # Sta uitgaand DNS-verkeer toe van Loki
+      apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: allow-loki-egress-dns
+        namespace: {{ ns_logging }}
+      spec:
+        podSelector:
+          matchLabels:
+            app.kubernetes.io/name: loki
+        policyTypes:
+          - Egress
+        egress:
+          - ports:
+              - protocol: UDP
+                port: 53
+              - protocol: TCP
+                port: 53
+
+- name: NetworkPolicies voor logging aanmaken
+  ansible.builtin.command: kubectl apply -f /tmp/netpol-logging.yml
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
   changed_when: true

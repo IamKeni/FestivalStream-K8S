@@ -14,6 +14,47 @@
   failed_when: ns_app.rc not in [0, 1]
   changed_when: ns_app.rc == 0
 
+# ServiceAccount, Role en RoleBinding voor applicatie pods
+- name: RBAC manifest voor applicatie schrijven
+  ansible.builtin.copy:
+    dest: /tmp/rbac-applicatie.yml
+    content: |
+      apiVersion: v1
+      kind: ServiceAccount
+      metadata:
+        name: web-sa
+        namespace: {{ ns_applicatie }}
+      ---
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: Role
+      metadata:
+        name: web-reader
+        namespace: {{ ns_applicatie }}
+      rules:
+        - apiGroups: [""]
+          resources: ["pods", "services"]
+          verbs: ["get", "list", "watch"]
+      ---
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: RoleBinding
+      metadata:
+        name: web-reader-binding
+        namespace: {{ ns_applicatie }}
+      subjects:
+        - kind: ServiceAccount
+          name: web-sa
+          namespace: {{ ns_applicatie }}
+      roleRef:
+        kind: Role
+        name: web-reader
+        apiGroup: rbac.authorization.k8s.io
+
+- name: RBAC voor applicatie aanmaken
+  ansible.builtin.command: kubectl apply -f /tmp/rbac-applicatie.yml
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  changed_when: true
+
 # --- PersistentVolumeClaims (NFS-backed conform diagram) ---
 
 - name: PVC manifest voor Web Interface schrijven
@@ -90,6 +131,7 @@
             labels:
               app: web-interface
           spec:
+            serviceAccountName: web-sa
             containers:
               - name: web-interface
                 image: nginx:1.25-alpine
@@ -178,6 +220,7 @@
             labels:
               app: streaming-vod-service
           spec:
+            serviceAccountName: web-sa
             containers:
               - name: streaming-vod-service
                 image: nginx:1.25-alpine
@@ -296,6 +339,65 @@
 
 - name: HPA voor Streaming & VOD Service aanmaken
   ansible.builtin.command: kubectl apply -f /tmp/hpa-streaming-vod.yml
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  changed_when: true
+
+# Calico NetworkPolicies: applicatie namespace
+- name: NetworkPolicy manifest voor applicatie schrijven
+  ansible.builtin.copy:
+    dest: /tmp/netpol-applicatie.yml
+    content: |
+      # Standaard: blokkeer al het verkeer (deny-all)
+      apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: default-deny-all
+        namespace: {{ ns_applicatie }}
+      spec:
+        podSelector: {}
+        policyTypes:
+          - Ingress
+          - Egress
+      ---
+      # Sta inkomend verkeer toe van ingress-nginx naar poort 80
+      apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: allow-from-ingress-nginx
+        namespace: {{ ns_applicatie }}
+      spec:
+        podSelector: {}
+        policyTypes:
+          - Ingress
+        ingress:
+          - from:
+              - namespaceSelector:
+                  matchLabels:
+                    kubernetes.io/metadata.name: ingress-nginx
+            ports:
+              - protocol: TCP
+                port: 80
+      ---
+      # Sta DNS-verkeer toe zodat pods namen kunnen resolven
+      apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: allow-dns-egress
+        namespace: {{ ns_applicatie }}
+      spec:
+        podSelector: {}
+        policyTypes:
+          - Egress
+        egress:
+          - ports:
+              - protocol: UDP
+                port: 53
+              - protocol: TCP
+                port: 53
+
+- name: NetworkPolicies voor applicatie aanmaken
+  ansible.builtin.command: kubectl apply -f /tmp/netpol-applicatie.yml
   environment:
     KUBECONFIG: /etc/kubernetes/admin.conf
   changed_when: true
