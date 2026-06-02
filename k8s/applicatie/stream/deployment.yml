@@ -1,3 +1,96 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: stream-html
+  namespace: applicatie
+data:
+  index.html: |
+    <!DOCTYPE html>
+    <html lang="nl">
+    <head>
+      <meta charset="UTF-8">
+      <title>FestivalStream - Live & VOD</title>
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+          font-family: 'Segoe UI', sans-serif;
+          background: linear-gradient(135deg, #1a1a2e 0%, #2d1b4e 50%, #4a1942 100%);
+          min-height: 100vh;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: #fff;
+        }
+        .card {
+          background: rgba(255,255,255,0.07);
+          border: 1px solid rgba(255,255,255,0.15);
+          border-radius: 16px;
+          padding: 48px 56px;
+          text-align: center;
+          max-width: 480px;
+          box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+        }
+        .icon { font-size: 56px; margin-bottom: 16px; }
+        h1 { font-size: 2rem; font-weight: 700; margin-bottom: 8px; }
+        .subtitle { color: #a0aec0; font-size: 1rem; margin-bottom: 28px; }
+        .badge {
+          display: inline-block;
+          background: #e53e3e;
+          color: #fff;
+          border-radius: 999px;
+          padding: 6px 20px;
+          font-size: 0.85rem;
+          font-weight: 600;
+          letter-spacing: 0.5px;
+        }
+        .badge::before { content: "● "; animation: pulse 1.2s infinite; }
+        @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+        .channels {
+          margin-top: 28px;
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+          text-align: left;
+        }
+        .channel {
+          background: rgba(255,255,255,0.06);
+          border-radius: 8px;
+          padding: 10px 16px;
+          font-size: 0.9rem;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        }
+        .channel span { color: #a0aec0; font-size: 0.8rem; }
+        .nav {
+          margin-top: 28px;
+          padding-top: 20px;
+          border-top: 1px solid rgba(255,255,255,0.1);
+          font-size: 0.9rem;
+          color: #718096;
+        }
+        .nav a { color: #63b3ed; text-decoration: none; }
+        .nav a:hover { text-decoration: underline; }
+      </style>
+    </head>
+    <body>
+      <div class="card">
+        <div class="icon">🎬</div>
+        <h1>Festival Live &amp; VOD</h1>
+        <p class="subtitle">Streaming Service — <code>/stream</code></p>
+        <span class="badge">LIVE</span>
+        <div class="channels">
+          <div class="channel">🎵 Main Stage <span>Live</span></div>
+          <div class="channel">🎤 Artist Sessions <span>VOD</span></div>
+          <div class="channel">🎶 Aftermovie 2024 <span>VOD</span></div>
+        </div>
+        <div class="nav">
+          Terug naar &larr; <a href="/web">Web Interface</a>
+        </div>
+      </div>
+    </body>
+    </html>
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -19,6 +112,13 @@ spec:
         image: nginx:1.27-alpine
         ports:
         - containerPort: 80
+        volumeMounts:
+        - name: html
+          mountPath: /usr/share/nginx/html
+      volumes:
+      - name: html
+        configMap:
+          name: stream-html
 ---
 apiVersion: v1
 kind: Service
@@ -40,7 +140,8 @@ metadata:
 spec:
   ingressClassName: nginx
   rules:
-  - http:
+  - host: app.leerteam3.lab
+    http:
       paths:
       - path: /stream
         pathType: Prefix

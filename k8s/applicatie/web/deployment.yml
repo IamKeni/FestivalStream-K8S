@@ -6,13 +6,64 @@ metadata:
 data:
   index.html: |
     <!DOCTYPE html>
-    <html>
+    <html lang="nl">
     <head>
-      <title>Web Interface</title>
+      <meta charset="UTF-8">
+      <title>FestivalStream - Web Interface</title>
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+          font-family: 'Segoe UI', sans-serif;
+          background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+          min-height: 100vh;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: #fff;
+        }
+        .card {
+          background: rgba(255,255,255,0.07);
+          border: 1px solid rgba(255,255,255,0.15);
+          border-radius: 16px;
+          padding: 48px 56px;
+          text-align: center;
+          max-width: 480px;
+          box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+        }
+        .icon { font-size: 56px; margin-bottom: 16px; }
+        h1 { font-size: 2rem; font-weight: 700; margin-bottom: 8px; }
+        .subtitle { color: #a0aec0; font-size: 1rem; margin-bottom: 32px; }
+        .badge {
+          display: inline-block;
+          background: #38a169;
+          color: #fff;
+          border-radius: 999px;
+          padding: 6px 20px;
+          font-size: 0.85rem;
+          font-weight: 600;
+          letter-spacing: 0.5px;
+        }
+        .nav {
+          margin-top: 32px;
+          padding-top: 24px;
+          border-top: 1px solid rgba(255,255,255,0.1);
+          font-size: 0.9rem;
+          color: #718096;
+        }
+        .nav a { color: #63b3ed; text-decoration: none; }
+        .nav a:hover { text-decoration: underline; }
+      </style>
     </head>
     <body>
-      <h1>FestivalStream - Web Interface</h1>
-      <p>Web Interface is online.</p>
+      <div class="card">
+        <div class="icon">🌐</div>
+        <h1>FestivalStream</h1>
+        <p class="subtitle">Web Interface — <code>/web</code></p>
+        <span class="badge">✓ Online</span>
+        <div class="nav">
+          Ga naar de stream &rarr; <a href="/stream">Festival Live &amp; VOD</a>
+        </div>
+      </div>
     </body>
     </html>
 ---
@@ -65,7 +116,8 @@ metadata:
 spec:
   ingressClassName: nginx
   rules:
-  - http:
+  - host: app.leerteam3.lab
+    http:
       paths:
       - path: /web
         pathType: Prefix
