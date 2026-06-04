@@ -79,7 +79,7 @@
     - argocd
 
 # Namespace: applicatie (Web Interface + Streaming & VOD Service)
-- name: homelab applicatie deployen (namespace applicatie)
+- name: applicatie deployen (namespace applicatie)
   hosts: master
   become: true
   roles:

@@ -129,7 +129,7 @@ spec:
   - host: app.leerteam3.lab
     http:
       paths:
-      - path: /web(/|$)(.*)
+      - path: /web
         pathType: ImplementationSpecific
         backend:
           service:

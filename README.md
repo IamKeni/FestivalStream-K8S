@@ -4,12 +4,12 @@
 
 ## Cluster overzicht
 
-| Rol      | Hostname     | IP-adres       | OS             |
-|----------|--------------|----------------|----------------|
-| Master   | k8s-master   | 192.168.1.50  | Ubuntu 22.04   |
-| Worker 1 | k8s-worker1  | 192.168.1.51  | Ubuntu 22.04   |
-| Worker 2 | k8s-worker2  | 192.168.1.52  | Ubuntu 22.04   |
-| NFS      | TrueNAS      | 192.168.1.20  | TrueNAS Scale  |
+| Rol      | Hostname     | IP-adres       | OS             |FQDN      |
+|----------|--------------|----------------|----------------|----------|
+| Master   | k8s-master   | 192.168.1.50  | Ubuntu 22.04   |k8smaster.leerteam3.lab |
+| Worker 1 | k8s-worker1  | 192.168.1.51  | Ubuntu 22.04   |k8smaster.leerteam3.lab |
+| Worker 2 | k8s-worker2  | 192.168.1.52  | Ubuntu 22.04   |k8smaster.leerteam3.lab |
+| NFS      | TrueNAS      | 192.168.1.20  | TrueNAS Scale  |truenas.leerteam3.lab |
 
 ---
 

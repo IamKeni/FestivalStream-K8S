@@ -153,7 +153,7 @@ spec:
   - host: app.leerteam3.lab
     http:
       paths:
-      - path: /stream(/|$)(.*)
+      - path: /stream
         pathType: ImplementationSpecific
         backend:
           service:
