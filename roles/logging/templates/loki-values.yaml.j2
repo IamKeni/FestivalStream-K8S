@@ -1,6 +1,7 @@
 deploymentMode: SingleBinary
 
 loki:
+  auth_enabled: false
   commonConfig:
     replication_factor: 1
   storage:
@@ -26,7 +27,6 @@ singleBinary:
     storageClass: "{{ nfs_storageclass_name }}"
     size: 10Gi
 
-# Scalable componenten uitschakelen
 read:
   replicas: 0
 write:
@@ -34,18 +34,13 @@ write:
 backend:
   replicas: 0
 
-# Cache uitschakelen
 chunksCache:
   enabled: false
 resultsCache:
   enabled: false
 
-# Gateway uitschakelen
 gateway:
   enabled: false
-
-# Geen authenticatie
-auth_enabled: false
 
 monitoring:
   selfMonitoring:
