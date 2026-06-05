@@ -277,3 +277,4 @@ Ansible-K8S/
 Calvin Wang
 Stan Beukers
 Christiaan van 't slot
+Vinay Anroedh
