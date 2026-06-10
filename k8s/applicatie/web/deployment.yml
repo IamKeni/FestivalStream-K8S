@@ -60,6 +60,7 @@ data:
         <h1>FestivalStream</h1>
         <p class="subtitle">Web Interface — <code>/web</code></p>
         <span class="badge">✓ Online</span>
+        <span >Hier ben ik geweest</span>
         <div class="nav">
           Ga naar de stream &rarr; <a href="/stream">Festival Live &amp; VOD</a>
         </div>
